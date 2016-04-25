@@ -74,7 +74,13 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
     class Connect extends Component {
       shouldComponentUpdate() {
-        return !pure || this.haveOwnPropsChanged || this.hasStoreStateChanged
+        return !pure || this.haveMergedPropsChanged
+      }
+
+      componentWillMount(){
+        this.updateDispatchPropsIfNeeded();
+        this.updateStatePropsIfNeeded();
+        this.haveMergedPropsChanged = this.updateMergedPropsIfNeeded();
       }
 
       constructor(props, context) {
@@ -89,6 +95,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           `or explicitly pass "store" as a prop to "${connectDisplayName}".`
         )
 
+        this.haveMergedPropsChanged = false;
         const storeState = this.store.getState()
         this.state = { storeState }
         this.clearCache()
@@ -215,6 +222,14 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       componentWillReceiveProps(nextProps) {
         if (!pure || !shallowEqual(nextProps, this.props)) {
           this.haveOwnPropsChanged = true
+          this.props = nextProps;
+
+          if (!pure || !this.renderedElement || this.doDispatchPropsDependOnOwnProps) {
+            this.updateDispatchPropsIfNeeded()
+            this.updateStatePropsIfNeeded()
+          }
+          this.haveMergedPropsChanged = this.updateMergedPropsIfNeeded();
+          console.log('component updated via props')
         }
       }
 
@@ -259,7 +274,12 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         }
 
         this.hasStoreStateChanged = true
-        this.setState({ storeState })
+        this.setState((previousState, currentProps) => {
+          this.props = currentProps;
+          this.updateDispatchPropsIfNeeded();
+          this.updateStatePropsIfNeeded();
+          this.haveMergedPropsChanged = this.updateMergedPropsIfNeeded();
+        })
       }
 
       getWrappedInstance() {
@@ -272,59 +292,9 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
 
       render() {
-        const {
-          haveOwnPropsChanged,
-          hasStoreStateChanged,
-          haveStatePropsBeenPrecalculated,
-          statePropsPrecalculationError,
-          renderedElement
-        } = this
-
-        this.haveOwnPropsChanged = false
-        this.hasStoreStateChanged = false
-        this.haveStatePropsBeenPrecalculated = false
-        this.statePropsPrecalculationError = null
-
-        if (statePropsPrecalculationError) {
-          throw statePropsPrecalculationError
+        if (!this.haveMergedPropsChanged && this.renderedElement){
+          return this.renderedElement
         }
-
-        let shouldUpdateStateProps = true
-        let shouldUpdateDispatchProps = true
-        if (pure && renderedElement) {
-          shouldUpdateStateProps = hasStoreStateChanged || (
-            haveOwnPropsChanged && this.doStatePropsDependOnOwnProps
-          )
-          shouldUpdateDispatchProps =
-            haveOwnPropsChanged && this.doDispatchPropsDependOnOwnProps
-        }
-
-        let haveStatePropsChanged = false
-        let haveDispatchPropsChanged = false
-        if (haveStatePropsBeenPrecalculated) {
-          haveStatePropsChanged = true
-        } else if (shouldUpdateStateProps) {
-          haveStatePropsChanged = this.updateStatePropsIfNeeded()
-        }
-        if (shouldUpdateDispatchProps) {
-          haveDispatchPropsChanged = this.updateDispatchPropsIfNeeded()
-        }
-
-        let haveMergedPropsChanged = true
-        if (
-          haveStatePropsChanged ||
-          haveDispatchPropsChanged ||
-          haveOwnPropsChanged
-        ) {
-          haveMergedPropsChanged = this.updateMergedPropsIfNeeded()
-        } else {
-          haveMergedPropsChanged = false
-        }
-
-        if (!haveMergedPropsChanged && renderedElement) {
-          return renderedElement
-        }
-
         if (withRef) {
           this.renderedElement = createElement(WrappedComponent, {
             ...this.mergedProps,
